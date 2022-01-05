@@ -1,0 +1,31 @@
+{
+  "name": "slacker775/backblaze-b2-api",
+  "description": "PHP Library for Backblaze B2 API",
+  "minimum-stability": "stable",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "David Hollis",
+      "email": "slacker775@gmail.com"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "Backblaze\\B2\\": "src/"
+    }
+  },
+  "require-dev": {
+    "symfony/http-client": "*",
+    "nyholm/psr7": "^1.4",
+    "symfony/var-dumper": "*"
+  },
+  "require": {
+    "psr/http-client": "^1.0",
+    "psr/http-client-implementation": "*",
+    "psr/http-factory": "^1.0",
+    "psr/http-factory-implementation": "*",
+    "php-http/discovery": "^1.14",
+    "symfony/serializer": "^4.0|^5.0|^6.0",
+    "symfony/property-access": "^4.0|^5.0|^6.0"
+  }
+}
