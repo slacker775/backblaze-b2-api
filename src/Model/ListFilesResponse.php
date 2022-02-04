@@ -9,6 +9,8 @@ class ListFilesResponse
 
     private ?string $nextFileName;
 
+    private ?string $nextFileId;
+
     public function __construct()
     {
         $this->files = [];
@@ -44,6 +46,17 @@ class ListFilesResponse
     public function setNextFileName(?string $nextFileName): ListFilesResponse
     {
         $this->nextFileName = $nextFileName;
+        return $this;
+    }
+
+    public function getNextFileId(): ?string
+    {
+        return $this->nextFileId;
+    }
+
+    public function setNextFileId(?string $nextFileId): ListFilesResponse
+    {
+        $this->nextFileId = $nextFileId;
         return $this;
     }
 
