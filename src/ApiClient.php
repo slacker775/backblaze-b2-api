@@ -368,7 +368,6 @@ class ApiClient
             }
         }
 
-        printf("Deleting %s\n", $filename);
         $response = $this->executeRequest(
             '/b2api/v2/b2_delete_file_version',
             [
