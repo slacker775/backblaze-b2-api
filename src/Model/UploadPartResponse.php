@@ -2,6 +2,7 @@
 
 namespace Backblaze\B2\Model;
 
+use DateTime;
 use DateTimeInterface;
 
 class UploadPartResponse
@@ -93,7 +94,7 @@ class UploadPartResponse
     }
 
     public function setUploadTimestamp(string|int|DateTimeInterface $uploadTimestamp = null
-    ): File {
+    ): UploadPartResponse {
         if (is_int($uploadTimestamp)) {
             $this->uploadTimestamp = new DateTime(
                 '@' . $uploadTimestamp / 1000
