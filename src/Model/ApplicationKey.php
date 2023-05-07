@@ -14,6 +14,8 @@ class ApplicationKey
 
     private ?string $expirationTimestamp;
 
+    private ?int $validDurationInSeconds;
+
     private string $keyName;
 
     private ?string $namePrefix;
@@ -172,5 +174,16 @@ class ApplicationKey
         return $this;
     }
 
+    public function toArray(): array
+    {
+        return [
+            'accountId' => $this->accountId,
+            'capabilities' => $this->capabilities,
+            'keyName' => $this->keyName,
+            'validDurationInSeconds' => $this->validDurationInSeconds,
+            'bucketId' => $this->bucketId,
+            'namePrefix' => $this->namePrefix
+        ];
+    }
 
 }
