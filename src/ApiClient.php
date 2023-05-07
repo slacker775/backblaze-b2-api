@@ -15,14 +15,18 @@ use Backblaze\B2\Exception\ServiceUnavailableException;
 use Backblaze\B2\Exception\TooManyRequestsException;
 use Backblaze\B2\Exception\UnauthorizedException;
 use Backblaze\B2\Exception\UnsupportedException;
+use Backblaze\B2\Model\ApplicationKey;
 use Backblaze\B2\Model\Bucket;
 use Backblaze\B2\Model\File;
 use Backblaze\B2\Model\ListBucketResponse;
 use Backblaze\B2\Model\ListFilesResponse;
 use Backblaze\B2\Model\ListKeysResponse;
+use Backblaze\B2\Model\UploadPartResponse;
+use Backblaze\B2\Model\UploadPartUrl;
 use Generator;
 use Http\Discovery\Psr17FactoryDiscovery;
 use Http\Discovery\Psr18ClientDiscovery;
+use InvalidArgumentException;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -75,15 +79,26 @@ class ApiClient
         );
     }
 
-    public function createKey()
+    public function createKey(ApplicationKey $key): ApplicationKey
     {
-        throw new NotImplementedException();
+        $response = $this->executeRequest(
+            '/b2api/v2/b2_create_key', $key->toArray()
+        );
+        return $this->serializer->deserialize(
+            $response->getBody(), ApplicationKey::class, 'json'
+        );
     }
 
-    public function deleteKey()
+    public function deleteKey(string $applicationKeyId): ApplicationKey
     {
-        throw new NotImplementedException();
-    }
+        $response = $this->executeRequest(
+            '/b2api/v2/b2_delete_key', [
+                'applicationKeyId' => $applicationKeyId
+            ]
+        );
+        return $this->serializer->deserialize(
+            $response->getBody(), ApplicationKey::class, 'json'
+        );    }
 
     public function listKeys(int $maxKeyCount = 100): Generator
     {
@@ -242,19 +257,8 @@ class ApiClient
         throw new NotImplementedException();
     }
 
-    public function getFileByPrefix(string $prefix, string $bucketId,
-    string $delimiter = '/'): Generator {
-        foreach (
-            $this->listFilenames($bucketId, 100, $prefix, $delimiter) as $result
-        ) {
-            if (str_starts_with($result->getFileName(), $prefix)) {
-                yield $result;
-            }
-        }
-    }
-
     public function getFileByName(string $filename, string $bucketId,
-        ): File {
+    ): File {
         foreach (
             $this->listFilenames($bucketId, 100, $filename) as $result
         ) {
@@ -295,8 +299,9 @@ class ApiClient
         } while ($startFileName !== null);
     }
 
-    public function listFileVersions(string $bucketId,int $maxFileCount = 100, string $prefix = '', string $delimiter = null)
-    {
+    public function listFileVersions(string $bucketId, int $maxFileCount = 100,
+        string $prefix = '', string $delimiter = null
+    ) {
         $startFileName = null;
         $startFileId = null;
 
@@ -353,15 +358,48 @@ class ApiClient
             '/b2api/v2/b2_hide_file',
             [
                 'bucketId' => $bucketId,
-                'fileName' => $fileName
-            ]);
-        return $this->serializer->deserialize($response->getBody(), File::class, 'json');
+                'fileName' => $fileName,
+            ]
+        );
+        return $this->serializer->deserialize(
+            $response->getBody(), File::class, 'json'
+        );
     }
 
-    private function deleteSingleFile(string $fileId, string $bucketId, string $filename = null)
-    {
-        if($filename === null) {
-            if( ($info = $this->getFileInfo($fileId)) !== null) {
+    public function deleteFile(string $fileId = null, string $filename = null,
+        string $bucketId = null, bool $allVersions = false
+    ): void {
+        if ($fileId !== null) {
+            $this->deleteSingleFile($fileId, $bucketId);
+        } elseif ($filename !== null && $bucketId !== null) {
+            foreach (
+                $this->getFileByPrefix($filename, $bucketId) as $file
+            ) {
+                if ($file->getFileId() !== null) {
+                    $this->deleteSingleFile(
+                        $file->getFileId(), $bucketId, $file->getFileName()
+                    );
+                } else {
+                    if ($file->getAction() === 'folder') {
+                        /* Recurse through directories */
+                        $this->deleteFile(
+                            null, $file->getFileName(), $bucketId
+                        );
+                    }
+                }
+            }
+        } else {
+            throw new InvalidArgumentException(
+                'Either fileId or filename and bucketId must be specified'
+            );
+        }
+    }
+
+    private function deleteSingleFile(string $fileId, string $bucketId,
+        string $filename = null
+    ) {
+        if ($filename === null) {
+            if (($info = $this->getFileInfo($fileId)) !== null) {
                 $filename = $info->getFileName();
             } else {
                 throw new NotFoundException('File does not exist');
@@ -377,26 +415,6 @@ class ApiClient
         );
     }
 
-    public function deleteFile(string $fileId = null, string $filename = null, string $bucketId = null): void
-    {
-        if ($fileId !== null) {
-            $this->deleteSingleFile($fileId, $bucketId);
-        } elseif($filename !== null && $bucketId !== null) {
-            foreach($this->getFileByPrefix($filename . '/', $bucketId) as $file) {
-                if($file->getFileId() !== null) {
-                    $this->deleteSingleFile(
-                        $file->getFileId(), $bucketId, $file->getFileName()
-                    );
-                } else if($file->getAction() === 'folder') {
-                    /* Recurse through directories */
-                    $this->deleteFile(null, $file->getFileName(), $bucketId);
-                }
-            }
-        } else {
-            throw new \InvalidArgumentException('Either fileId or filename and bucketId must be specified');
-        }
-    }
-
     public function getFileInfo(string $fileId): File
     {
         $response = $this->executeRequest(
@@ -405,6 +423,18 @@ class ApiClient
         return $this->serializer->deserialize(
             $response->getBody(), File::class, 'json'
         );
+    }
+
+    public function getFileByPrefix(string $prefix, string $bucketId,
+        string $delimiter = '/'
+    ): Generator {
+        foreach (
+            $this->listFilenames($bucketId, 100, $prefix, $delimiter) as $result
+        ) {
+            if (str_starts_with($result->getFileName(), $prefix)) {
+                yield $result;
+            }
+        }
     }
 
     public function downloadFileById(string $id)
@@ -420,9 +450,11 @@ class ApiClient
         return $this->httpClient->sendRequest($request);
     }
 
-    public function downloadFileByName(string $filename, string $bucketName): StreamInterface
-    {
-        $url = sprintf('%s/file/%s/%s', $this->downloadUrl, $bucketName, $filename);
+    public function downloadFileByName(string $filename, string $bucketName
+    ): StreamInterface {
+        $url = sprintf(
+            '%s/file/%s/%s', $this->downloadUrl, $bucketName, $filename
+        );
         $request = $this->requestFactory
             ->createRequest('GET', $url)
             ->withHeader('Authorization', $this->token)
@@ -434,7 +466,8 @@ class ApiClient
         return $response->getBody();
     }
 
-    public function uploadFile(string $filename, string $bucketId, $content, array $options = []
+    public function uploadFile(string $filename, string $bucketId, $content,
+        array $options = []
     ): File {
         $uploadParams = $this->getUploadUrl($bucketId);
 
@@ -456,7 +489,7 @@ class ApiClient
             ->createRequest('POST', $uploadParams['uploadUrl'])
             ->withHeader('Authorization', $uploadParams['authorizationToken'])
             ->withHeader('User-Agent', 'slacker775/backblaze-b2-api')
-            ->withHeader('X-Bz-File-Name', $filename)
+            ->withHeader('X-Bz-File-Name', urlencode($filename))
             ->withHeader('Content-Type', $options['contentType'] ?? 'b2/x-auto')
             ->withHeader('Content-Length', $size)
             ->withHeader('X-Bz-Content-Sha1', $hash)
@@ -479,24 +512,99 @@ class ApiClient
         return json_decode((string)$response->getBody(), true);
     }
 
-    public function uploadPart()
-    {
-        throw new NotImplementedException();
+    public function startLargeFile(string $fileName, string $bucketId,
+        string $contentType, array $fileInfo = []
+    ): File {
+        $response = $this->executeRequest(
+            '/b2api/v2/b2_start_large_file', [
+                'bucketId'    => $bucketId,
+                'fileName'    => $fileName,
+                'contentType' => $contentType,
+                'fileInfo'    => $fileInfo,
+            ]
+        );
+        return $this->serializer->deserialize(
+            $response->getBody(), File::class, 'json'
+        );
     }
 
-    public function startLargeFile()
+    public function getUploadPartUrl(string $fileId)
     {
-        throw new NotImplementedException();
+        $response = $this->executeRequest(
+            '/b2api/v2/b2_get_upload_part_url', [
+                'fileId' => $fileId,
+            ]
+        );
+        return $this->serializer->deserialize(
+            $response->getBody(), UploadPartUrl::class, 'json'
+        );
     }
 
-    public function finishLargeFile()
-    {
-        throw new NotImplementedException();
+    /**
+     * @param string      $url
+     * @param string      $token
+     * @param int         $part
+     * @param int         $contentLength
+     * @param string|resource       $content
+     * @param string|null $checksum
+     *
+     * @return \Backblaze\B2\Model\UploadPartResponse
+     * @throws \Psr\Http\Client\ClientExceptionInterface
+     */
+    public function uploadPart(string $url, string $token, int $part,
+        int $contentLength, mixed $content, string $checksum = null
+    ): UploadPartResponse {
+        $request = $this->requestFactory
+            ->createRequest('POST', $url)
+            ->withHeader('Accept', 'application/json')
+            ->withHeader('Authorization', $token)
+            ->withHeader('X-Bz-Part-Number', $part);
+        if(is_resource($content) === true) {
+            $data = fread($content,$contentLength);
+            $hash = sha1($data);
+            $length = strlen($data);
+            $request->withHeader('Content-Length', $length)
+                ->withHeader('X-Bz-Content-Sha1', $hash)
+                ->withBody($data);
+        } else {
+            $request->withHeader('Content-Length', $contentLength)
+                ->withHeader('X-Bz-Content-Sha1', $checksum)
+                ->withBody($content);
+        }
+        $response = $this->httpClient->sendRequest($request);
+        return $this->serializer->deserialize(
+            $response->getBody(), UploadPartResponse::class, 'json'
+        );
     }
 
-    public function cancelLargeFile()
+    /**
+     * @param string $fileId    - ID returned by startLargeFile
+     * @param array  $sha1Array - array of hex sha1 checksums for each
+     *                          part of the upload.  Part 1 of the upload
+     *                          corresponds to index 0 of sha1Array
+     *
+     */
+    public function finishLargeFile(string $fileId, array $sha1Array): File
     {
-        throw new NotImplementedException();
+        $response = $this->executeRequest(
+            '/b2api/v2/b2_finish_large_file', [
+                'fileId'        => $fileId,
+                'partSha1Array' => $sha1Array,
+            ]
+        );
+        return $this->serializer->deserialize(
+            $response->getBody(), File::class, 'json'
+        );
+    }
+
+    public function cancelLargeFile(string $fileId): array
+    {
+        $response = $this->executeRequest(
+            '/b2api/v2/b2_cancel_large_file', [
+                'fileId' => $fileId,
+            ]
+        );
+        return json_decode((string)$response->getBody(), true);
     }
 
     public function listUnfinishedLargeFiles(string $bucketId,
