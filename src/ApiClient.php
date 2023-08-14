@@ -623,4 +623,28 @@ class ApiClient
         throw new NotImplementedException();
     }
 
+    public function getDownloadAuthorization(string $path, string $bucketId,
+        int $validity = 60
+    ): string {
+        $response = $this->executeRequest(
+            '/b2api/v2/b2_get_download_authorization', [
+            'bucketId'               => $bucketId,
+            'fileNamePrefix'         => $path,
+            'validDurationInSeconds' => $validity,
+        ]
+        );
+
+        $result = json_decode((string)$response->getBody(), true);
+        return $result['authorizationToken'];
+    }
+
+    public function createDownloadUrl(string $path, string $bucketName,
+        string $authToken
+    ): string {
+        return sprintf(
+            "%s/file/%s/%s?Authorization=%s", $this->downloadUrl, $bucketName,
+            $path, $authToken
+        );
+    }
+
 }
